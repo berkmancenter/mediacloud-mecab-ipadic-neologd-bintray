@@ -22,8 +22,8 @@ MECAB_IPADIC_NEOLOGD_NAME = "mecab-ipadic-neologd"
 MECAB_IPADIC_NEOLOGD_SUMMARY = "Neologism dictionary based on the language resources on the Web for mecab-ipadic"
 MECAB_IPADIC_NEOLOGD_LICENSE = "Apache-2.0"
 MECAB_IPADIC_NEOLOGD_VENDOR = "Toshinori Sato (@overlast) <overlasting@gmail.com>"
-MECAB_IPADIC_NEOLOGD_MAINTAINER = "Linas Valiukas <shirshegsm@gmail.com>"
-MECAB_IPADIC_NEOLOGD_URL = "https://github.com/pypt/mecab-ipadic-neologd-bintray"
+MECAB_IPADIC_NEOLOGD_MAINTAINER = "Linas Valiukas <lvaliukas@cyber.law.harvard.edu>"
+MECAB_IPADIC_NEOLOGD_URL = "https://github.com/berkmancenter/mediacloud-mecab-ipadic-neologd-bintray"
 MECAB_IPADIC_NEOLOGD_GIT_URL = MECAB_IPADIC_NEOLOGD_URL + ".git"
 MECAB_IPADIC_NEOLOGD_DEPENDS_MECAB_VERSION = "0.996"
 MECAB_IPADIC_NEOLOGD_CHANGELOG_FILE = 'ChangeLog'
@@ -37,7 +37,6 @@ MECAB_IPADIC_NEOLOGD_TAGS = [
     'language-resources',
     'japanese-language',
 ]
-MECAB_IPADIC_NEOLOGD_DEB_DISTRIBUTION = 'xenial'
 
 PATH_TO_ROOT = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..')
 MECAB_IPADIC_NEOLOGD_MISC_DOCS = [
@@ -308,7 +307,7 @@ def __bintray_descriptor_json(bintray_repository_name, bintray_username, version
                     "override": 1,
 
                     # Used for .deb files only
-                    "deb_distribution": MECAB_IPADIC_NEOLOGD_DEB_DISTRIBUTION,
+                    "deb_distribution": 'stable',
                     "deb_component": 'main',
                     "deb_architecture": 'all',
                 }
