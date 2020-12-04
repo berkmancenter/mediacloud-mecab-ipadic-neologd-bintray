@@ -55,7 +55,7 @@ jobs:
 
       - name: Set default package version
         run: |
-          export PKG_VERSION=$(git rev-parse --short HEAD)
+          export PKG_VERSION="$(git rev-parse --short HEAD)-1"
           echo "Default package version: ${PKG_VERSION}"
           echo "PKG_VERSION=${PKG_VERSION}" >> $GITHUB_ENV
           if [[ -z "${PKG_VERSION}" ]]; then echo "Unable to determine HEAD commit hash."; exit 1; fi
@@ -73,7 +73,7 @@ jobs:
           ./libexec/create_package.py
           --type tgz
           --input_dir target/
-          --version_tag "${PKG_VERSION}-1"
+          --version_tag "${PKG_VERSION}"
           --output_file mecab-ipadic-utf8.tgz;
           if [ $(du -k mecab-ipadic-utf8.tgz | cut -f 1) -le $((1024 * 170)) ]; then
           echo "Resulting .tgz is too small"; exit 1;
@@ -84,7 +84,7 @@ jobs:
           ./libexec/create_package.py
           --type deb
           --input_dir target/
-          --version_tag "${PKG_VERSION}-1"
+          --version_tag "${PKG_VERSION}"
           --output_file mecab-ipadic-utf8.deb;
           if [ $(du -k mecab-ipadic-utf8.deb | cut -f 1) -le $((1024 * 170)) ]; then
           echo "Resulting .deb is too small"; exit 1;
@@ -95,7 +95,7 @@ jobs:
           ./libexec/create_package.py
           --type rpm
           --input_dir target/
-          --version_tag "${PKG_VERSION}-1"
+          --version_tag "${PKG_VERSION}"
           --output_file mecab-ipadic-utf8.rpm;
           if [ $(du -k mecab-ipadic-utf8.rpm | cut -f 1) -le $((1024 * 170)) ]; then
           echo "Resulting .rpm is too small"; exit 1;
