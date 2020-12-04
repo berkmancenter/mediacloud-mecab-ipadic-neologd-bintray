@@ -94,7 +94,7 @@ jobs:
         run: >
           ./libexec/create_package.py
           --type rpm
-          --input_dir $INSTALL_TARGET
+          --input_dir target/
           --version_tag "${PKG_VERSION}-1"
           --output_file mecab-ipadic-utf8.rpm;
           if [ $(du -k mecab-ipadic-utf8.rpm | cut -f 1) -le $((1024 * 170)) ]; then
