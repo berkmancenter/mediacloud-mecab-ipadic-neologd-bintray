@@ -1,0 +1,147 @@
+name: Build, release
+
+on: [push]
+
+jobs:
+
+  build_release:
+
+    name: Build, release
+    runs-on: ubuntu-20.04
+    if: "!contains(github.event.head_commit.message, 'ci skip')"
+
+    steps:
+
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.8
+
+      - name: Set up Ruby
+        uses: actions/setup-ruby@v1
+        with:
+          ruby-version: 2.7
+
+      - name: Update APT listing
+        run: sudo apt-get -y update
+
+      - name: Install utility packages
+        run: >
+          sudo apt-get -y install
+          build-essential
+          curl
+          file
+          git
+          libmecab-dev
+          make
+          mecab
+          mecab-ipadic-utf8
+          rpm
+          ruby
+          ruby-dev
+          xz-utils
+
+      - name: Install FPM Ruby module
+        run: sudo gem install --force --no-document fpm
+
+      - name: Build dictionary
+        run: |
+          bash ./libexec/make-mecab-ipadic-neologd.sh
+          mkdir target/
+          bash ./bin/install-mecab-ipadic-neologd --prefix `readlink -m target/` --forceyes
+
+      - name: Set default package version
+        run: |
+          export PKG_VERSION=$(git rev-parse --short HEAD)
+          echo "Default package version: ${PKG_VERSION}"
+          echo "PKG_VERSION=${PKG_VERSION}" >> $GITHUB_ENV
+          if [[ -z "${PKG_VERSION}" ]]; then echo "Unable to determine HEAD commit hash."; exit 1; fi
+
+      - name: Set tag package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          export PKG_VERSION=$(git describe --tags)
+          echo "Tag package version: ${PKG_VERSION}"
+          echo "PKG_VERSION=${PKG_VERSION}" >> $GITHUB_ENV
+          if [[ -z "${PKG_VERSION}" ]]; then echo "Unable to determine tag."; exit 1; fi
+
+      - name: Create .tgz
+        run: >
+          ./libexec/create_package.py
+          --type tgz
+          --input_dir target/
+          --version_tag "${PKG_VERSION}-1"
+          --output_file mecab-ipadic-utf8.tgz;
+          if [ $(du -k mecab-ipadic-utf8.tgz | cut -f 1) -le $((1024 * 170)) ]; then
+          echo "Resulting .tgz is too small"; exit 1;
+          fi
+
+      - name: Create .deb
+        run: >
+          ./libexec/create_package.py
+          --type deb
+          --input_dir target/
+          --version_tag "${PKG_VERSION}-1"
+          --output_file mecab-ipadic-utf8.deb;
+          if [ $(du -k mecab-ipadic-utf8.deb | cut -f 1) -le $((1024 * 170)) ]; then
+          echo "Resulting .deb is too small"; exit 1;
+          fi
+
+      - name: Create .rpm
+        run: >
+          ./libexec/create_package.py
+          --type rpm
+          --input_dir target/
+          --version_tag "${PKG_VERSION}-1"
+          --output_file mecab-ipadic-utf8.rpm;
+          if [ $(du -k mecab-ipadic-utf8.rpm | cut -f 1) -le $((1024 * 170)) ]; then
+          echo "Resulting .rpm is too small"; exit 1;
+          fi
+
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        id: created_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.PKG_VERSION }}
+          release_name: ${{ env.PKG_VERSION }}
+          draft: true
+          prerelease: false
+
+      - name: Add .tgz file to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.created_release.outputs.upload_url }}
+          asset_path: mecab-ipadic-utf8.tgz
+          asset_name: mecab-ipadic-utf8.tgz
+          asset_content_type: application/gzip
+
+      - name: Add .deb file to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.created_release.outputs.upload_url }}
+          asset_path: mecab-ipadic-utf8.deb
+          asset_name: mecab-ipadic-utf8.deb
+          asset_content_type: application/vnd.debian.binary-package
+
+      - name: Add .rpm file to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.created_release.outputs.upload_url }}
+          asset_path: mecab-ipadic-utf8.rpm
+          asset_name: mecab-ipadic-utf8.rpm
+          asset_content_type: application/x-rpm

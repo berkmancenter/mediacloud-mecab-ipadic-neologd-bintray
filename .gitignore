@@ -1,3 +1,7 @@
 build/
 target/
 
+mecab-ipadic-utf8.tgz
+mecab-ipadic-utf8.deb
+mecab-ipadic-utf8.rpm
+

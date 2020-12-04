@@ -1,15 +1,14 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 
 import argparse
-import datetime
-import errno
-import json
 import logging
 import os
+import pathlib
 import re
 import shutil
 import subprocess
 import tempfile
+from typing import List, Optional, Tuple
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -22,8 +21,8 @@ MECAB_IPADIC_NEOLOGD_NAME = "mecab-ipadic-neologd"
 MECAB_IPADIC_NEOLOGD_SUMMARY = "Neologism dictionary based on the language resources on the Web for mecab-ipadic"
 MECAB_IPADIC_NEOLOGD_LICENSE = "Apache-2.0"
 MECAB_IPADIC_NEOLOGD_VENDOR = "Toshinori Sato (@overlast) <overlasting@gmail.com>"
-MECAB_IPADIC_NEOLOGD_MAINTAINER = "Linas Valiukas <lvaliukas@cyber.law.harvard.edu>"
-MECAB_IPADIC_NEOLOGD_URL = "https://github.com/berkmancenter/mediacloud-mecab-ipadic-neologd-bintray"
+MECAB_IPADIC_NEOLOGD_MAINTAINER = "Linas Valiukas <linas@mediacloud.org>"
+MECAB_IPADIC_NEOLOGD_URL = "https://github.com/mediacloud/mecab-ipadic-neologd-prebuilt"
 MECAB_IPADIC_NEOLOGD_GIT_URL = MECAB_IPADIC_NEOLOGD_URL + ".git"
 MECAB_IPADIC_NEOLOGD_DEPENDS_MECAB_VERSION = "0.996"
 MECAB_IPADIC_NEOLOGD_CHANGELOG_FILE = 'ChangeLog'
@@ -49,12 +48,11 @@ MECAB_IPADIC_NEOLOGD_MISC_DOCS = [
 
 # ---
 
-def __run_command(command, cwd=None):
-    line_buffered = 1
+def __run_command(command: List[str], cwd: Optional[str] = None) -> None:
     process = subprocess.Popen(command,
                                stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
-                               bufsize=line_buffered,
+                               bufsize=0,
                                cwd=cwd)
     while True:
         output = process.stdout.readline()
@@ -63,34 +61,24 @@ def __run_command(command, cwd=None):
         logging.info(output.strip())
     rc = process.poll()
     if rc > 0:
-        raise MeCabPackageException("Process returned non-zero exit code %d" % rc)
+        raise MeCabPackageException(f"Process returned non-zero exit code {rc}")
 
 
-def __temp_directory():
+def __temp_directory() -> str:
     """Return temporary directory on the same partition (to be able to hardlink stuff)."""
     return tempfile.mkdtemp()
 
 
-def __mkdir_p(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
+def __mkdir_p(path: str) -> None:
+    pathlib.Path(path).mkdir(parents=True, exist_ok=True)
 
 
-def create_tgz_package(input_dir, version, revision):
+def create_tgz_package(input_dir: str, version: str, revision: str) -> str:
     temp_dir = __temp_directory()
-    mecab_dirname = '%(name)s-%(version)s-%(revision)s' % {
-        'name': MECAB_IPADIC_NEOLOGD_NAME,
-        'version': version,
-        'revision': revision,
-    }
+    mecab_dirname = f'{MECAB_IPADIC_NEOLOGD_NAME}-{version}-{revision}'
     temp_mecab_dir_path = os.path.join(temp_dir, mecab_dirname)
     os.mkdir(temp_mecab_dir_path)
-    logging.debug('Temporary MeCab tarball directory: %s' % temp_mecab_dir_path)
+    logging.debug(f'Temporary MeCab tarball directory: {temp_mecab_dir_path}')
 
     logging.info('Linking MeCab files to tarball directory...')
     for filename in os.listdir(input_dir):
@@ -102,19 +90,19 @@ def create_tgz_package(input_dir, version, revision):
     for doc_file_path in MECAB_IPADIC_NEOLOGD_MISC_DOCS:
         os.link(doc_file_path, os.path.join(temp_mecab_dir_path, os.path.basename(doc_file_path)))
 
-    tarball_filename = '%s.tgz' % mecab_dirname
-    logging.info('Creating "%s"...' % tarball_filename)
+    tarball_filename = f'{mecab_dirname}.tgz'
+    logging.info(f'Creating "{tarball_filename}"...')
     temp_mecab_tarball_path = os.path.join(temp_dir, tarball_filename)
     __run_command(['tar', '-czvf', temp_mecab_tarball_path, mecab_dirname], cwd=temp_dir)
 
     logging.info('Cleaning up temporary directory...')
     shutil.rmtree(temp_mecab_dir_path)
 
-    logging.info('Resulting tarball: %s' % temp_mecab_tarball_path)
+    logging.info(f'Resulting tarball: {temp_mecab_tarball_path}')
     return temp_mecab_tarball_path
 
 
-def __fpm_common_flags(version, revision):
+def __fpm_common_flags(version: str, revision: str) -> List[str]:
     return [
         '--verbose',
         '--input-type', 'dir',
@@ -131,7 +119,7 @@ def __fpm_common_flags(version, revision):
     ]
 
 
-def create_deb_package(input_dir, version, revision):
+def create_deb_package(input_dir: str, version: str, revision: str) -> str:
     temp_dir = __temp_directory()
     deb_source_dir = os.path.join(temp_dir, 'deb')
     os.mkdir(deb_source_dir)
@@ -155,29 +143,25 @@ def create_deb_package(input_dir, version, revision):
     for doc_file_path in MECAB_IPADIC_NEOLOGD_MISC_DOCS:
         os.link(doc_file_path, os.path.join(doc_dir, os.path.basename(doc_file_path)))
 
-    deb_name = '%(name)s_%(version)s-%(revision)s_all.deb' % {
-        'name': MECAB_IPADIC_NEOLOGD_NAME,
-        'version': version,
-        'revision': revision,
-    }
+    deb_name = f'{MECAB_IPADIC_NEOLOGD_NAME}_{version}-{revision}_all.deb'
     deb_path = os.path.join(temp_dir, deb_name)
 
     after_install_path = os.path.join(temp_dir, 'after-install')
     with open(after_install_path, 'w') as after_install:
         after_install.write(
-            'update-alternatives --install /var/lib/mecab/dic/debian mecab-dictionary /%s 100' % deb_base_lib_dir
+            f'update-alternatives --install /var/lib/mecab/dic/debian mecab-dictionary /{deb_base_lib_dir} 100'
         )
 
     after_remove_path = os.path.join(temp_dir, 'after-remove')
     with open(after_remove_path, 'w') as after_remove:
-        after_remove.write('update-alternatives --remove mecab-dictionary /%s' % deb_base_lib_dir)
+        after_remove.write(f'update-alternatives --remove mecab-dictionary /{deb_base_lib_dir}')
 
-    logging.info('Creating %s...' % deb_name)
+    logging.info(f'Creating {deb_name}...')
     fpm_command = ['fpm'] + __fpm_common_flags(version=version, revision=revision) + [
         '--output-type', 'deb',
         '--package', deb_path,
         '--chdir', deb_source_dir,
-        '--depends', 'mecab (>= %s)' % MECAB_IPADIC_NEOLOGD_DEPENDS_MECAB_VERSION,
+        '--depends', f'mecab (>= {MECAB_IPADIC_NEOLOGD_DEPENDS_MECAB_VERSION})',
         '--category', 'misc',
         '--deb-priority', 'extra',
         '--deb-no-default-config-files',
@@ -190,11 +174,11 @@ def create_deb_package(input_dir, version, revision):
     logging.info('Cleaning up temporary directory...')
     shutil.rmtree(deb_source_dir)
 
-    logging.info('Resulting .deb: %s' % deb_path)
+    logging.info(f'Resulting .deb: {deb_path}')
     return deb_path
 
 
-def create_rpm_package(input_dir, version, revision):
+def create_rpm_package(input_dir: str, version: str, revision: str) -> str:
     temp_dir = __temp_directory()
     rpm_source_dir = os.path.join(temp_dir, 'rpm')
     os.mkdir(rpm_source_dir)
@@ -202,7 +186,7 @@ def create_rpm_package(input_dir, version, revision):
     lib_dir = os.path.join(rpm_source_dir, 'usr/lib64/mecab/dic/ipadic-neologd')
     __mkdir_p(lib_dir)
 
-    doc_dir = os.path.join(rpm_source_dir, 'usr/share/doc/%s-%s' % (MECAB_IPADIC_NEOLOGD_NAME, version,))
+    doc_dir = os.path.join(rpm_source_dir, f'usr/share/doc/{MECAB_IPADIC_NEOLOGD_NAME}-{version}')
     __mkdir_p(doc_dir)
 
     logging.info('Linking MeCab files to library directory...')
@@ -215,19 +199,15 @@ def create_rpm_package(input_dir, version, revision):
     for doc_file_path in MECAB_IPADIC_NEOLOGD_MISC_DOCS:
         os.link(doc_file_path, os.path.join(doc_dir, os.path.basename(doc_file_path)))
 
-    rpm_name = '%(name)s_%(version)s-%(revision)s_all.rpm' % {
-        'name': MECAB_IPADIC_NEOLOGD_NAME,
-        'version': version,
-        'revision': revision,
-    }
+    rpm_name = f'{MECAB_IPADIC_NEOLOGD_NAME}_{version}-{revision}_all.rpm'
     rpm_path = os.path.join(temp_dir, rpm_name)
 
-    logging.info('Creating %s...' % rpm_name)
+    logging.info(f'Creating {rpm_name}...')
     fpm_command = ['fpm'] + __fpm_common_flags(version=version, revision=revision) + [
         '--output-type', 'rpm',
         '--package', rpm_path,
         '--chdir', rpm_source_dir,
-        '--depends', 'mecab >= %s' % MECAB_IPADIC_NEOLOGD_DEPENDS_MECAB_VERSION,
+        '--depends', f'mecab >= {MECAB_IPADIC_NEOLOGD_DEPENDS_MECAB_VERSION}',
         '--category', 'Applications/Text',
         '--rpm-os', 'linux',
     ]
@@ -237,21 +217,21 @@ def create_rpm_package(input_dir, version, revision):
     logging.info('Cleaning up temporary directory...')
     shutil.rmtree(rpm_source_dir)
 
-    logging.info('Resulting .rpm: %s' % rpm_path)
+    logging.info(f'Resulting .rpm: {rpm_path}')
     return rpm_path
 
 
-def __version_revision_from_version_tag(version_tag):
-    version, revision = re.split('[\-_]', version_tag)
+def __version_revision_from_version_tag(version_tag: str) -> Tuple[str, str]:
+    version, revision = re.split(r'[\-_]', version_tag)
     return version, revision
 
 
-def create_package(package_type, input_dir, version, revision):
+def create_package(package_type: str, input_dir: str, version: str, revision: str) -> str:
     if not os.path.isfile(os.path.join(input_dir, 'sys.dic')):
-        raise MeCabPackageException('Input directory "%s" does not contain build MeCab dictionary.' % input_dir)
+        raise MeCabPackageException(f'Input directory "{input_dir}" does not contain build MeCab dictionary.')
     for misc_doc_file in MECAB_IPADIC_NEOLOGD_MISC_DOCS:
         if not os.path.isfile(misc_doc_file):
-            raise MeCabPackageException('Misc. documentation file "%s" does not exist.' % misc_doc_file)
+            raise MeCabPackageException(f'Misc. documentation file "{misc_doc_file}" does not exist.')
 
     if package_type == 'tgz':
         package_path = create_tgz_package(input_dir=input_dir, version=version, revision=revision)
@@ -260,62 +240,12 @@ def create_package(package_type, input_dir, version, revision):
     elif package_type == 'rpm':
         package_path = create_rpm_package(input_dir=input_dir, version=version, revision=revision)
     else:
-        raise MeCabPackageException('Unknown package type "%s".' % package_type)
+        raise MeCabPackageException(f'Unknown package type "{package_type}".')
 
     if not os.path.isfile(package_path):
-        MeCabPackageException('Created package "%s" does not exist.' % package_path)
+        MeCabPackageException(f'Created package "{package_path}" does not exist.')
 
     return package_path
-
-
-def __bintray_descriptor_json(bintray_repository_name, bintray_username, version, revision, version_tag, package_path):
-    package_dir = os.path.dirname(package_path)
-    package_filename = os.path.basename(package_path)
-    include_pattern = '%s/(%s)' % (package_dir, package_filename,)
-
-    descriptor = {
-        "package": {
-            "name": MECAB_IPADIC_NEOLOGD_NAME,
-            "repo": bintray_repository_name,
-            "subject": bintray_username,
-            "desc": MECAB_IPADIC_NEOLOGD_SUMMARY,
-            "website_url": MECAB_IPADIC_NEOLOGD_URL,
-            "vcs_url": MECAB_IPADIC_NEOLOGD_GIT_URL,
-            "github_use_tag_release_notes": True,
-            "github_release_notes_file": MECAB_IPADIC_NEOLOGD_CHANGELOG_FILE,
-            "licenses": [
-                MECAB_IPADIC_NEOLOGD_LICENSE
-            ],
-            "labels": MECAB_IPADIC_NEOLOGD_TAGS,
-            "public_download_numbers": True,
-            "public_stats": True,
-        },
-
-        "version": {
-            "name": '%s-%s' % (version, revision,),
-            "desc": "%s (%s)" % (version, revision,),
-            "released": datetime.datetime.today().strftime('%Y-%m-%d'),
-            "vcs_tag": version_tag,
-            "gpgSign": True,
-        },
-
-        "files": [
-            {
-                "includePattern": include_pattern,
-                "uploadPattern": "$1",
-                "matrixParams": {
-                    "override": 1,
-
-                    # Used for .deb files only
-                    "deb_distribution": 'stable',
-                    "deb_component": 'main',
-                    "deb_architecture": 'all',
-                }
-            }
-        ],
-        "publish": True
-    }
-    return json.dumps(descriptor)
 
 
 if __name__ == '__main__':
@@ -323,34 +253,20 @@ if __name__ == '__main__':
     parser.add_argument('--type', required=True, choices=['tgz', 'deb', 'rpm'], help='Package type.')
     parser.add_argument('--input_dir', required=True, help='Input directory with built MeCab dictionary.')
     parser.add_argument('--version_tag', required=True, help='Git version tag (version + revision), e.g. "20170814-1".')
-
-    parser.add_argument('--bintray_descriptor_file', required=False, help='Bintray.com descriptor file to write.')
-    parser.add_argument('--bintray_repository_name', required=False, help='Bintray.com repository name.')
-    parser.add_argument('--bintray_username', required=False, help='Bintray.com username.')
+    parser.add_argument('--output_file', required=True, help='Output package file.')
 
     args = parser.parse_args()
 
-    arg_version, arg_revision = re.split('[\-_]', args.version_tag)
-    logging.debug('Version: %s, revision: %s' % (arg_version, arg_revision))
+    arg_version, arg_revision = re.split(r'[\-_]', args.version_tag)
+    logging.debug(f'Version: {arg_version}, revision: {arg_revision}')
 
-    logging.info('Creating "%s" package from "%s"...' % (args.type, args.input_dir,))
+    logging.info(f'Creating "{args.type}" package from "{args.input_dir}"...')
     pkg_path = create_package(package_type=args.type,
                               input_dir=args.input_dir,
                               version=arg_version,
                               revision=arg_revision)
-    logging.info('Created package at "%s".' % pkg_path)
 
-    if args.bintray_descriptor_file:
-        logging.info('Creating Bintray.com descriptor to "%s"...' % args.bintray_descriptor_file)
-        with open(args.bintray_descriptor_file, 'w') as bintray_descriptor:
-            bintray_descriptor.write(
-                __bintray_descriptor_json(
-                    bintray_repository_name=args.bintray_repository_name,
-                    bintray_username=args.bintray_username,
-                    version=arg_version,
-                    revision=arg_revision,
-                    version_tag=args.version_tag,
-                    package_path=pkg_path,
-                )
-            )
-        logging.info('Created Bintray.com descriptor to "%s".' % args.bintray_descriptor_file)
+    logging.info(f'Moving package "{pkg_path}" to "{args.output_file}".')
+    shutil.move(pkg_path, args.output_file)
+
+    logging.info(f'Package created at "{args.output_file}".')

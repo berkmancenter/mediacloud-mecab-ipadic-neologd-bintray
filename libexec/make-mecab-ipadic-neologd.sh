@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (C) 2015-2017 Toshinori Sato (@overlast)
+# Copyright (C) 2015-2019 Toshinori Sato (@overlast)
 #
 #       https://github.com/neologd/mecab-ipadic-neologd
 #
@@ -54,28 +54,61 @@ ORG_DIC_NAME=mecab-ipadic-2.7.0-20070801
 NEOLOGD_DIC_NAME=mecab-ipadic-2.7.0-20070801-neologd-${YMD}
 
 if [ ! -e ${BASEDIR}/../build/${ORG_DIC_NAME}.tar.gz ]; then
-    STATUS_CODE=`curl --insecure -IL https://drive.google.com -s -w '%{http_code}\n' -o /dev/null`
-    if [ ${STATUS_CODE} = 200 ]; then
-        IS_NETWORK_ONLINE=1
-    else
-        echo "$ECHO_PREFIX Unable to access https://drive.google.com/"
-        echo "$ECHO_PREFIX     Status code : ${STATUS_CODE}"
+    DIST_SITE_URL_LIST=()
+    DIST_SITE_URL_LIST[0]="https://ja.osdn.net"
+    DIST_SITE_URL_LIST[1]="https://drive.google.com"
+    DIST_SITE_URL_LIST[2]="https://sourceforge.net"
+
+    IS_NETWORK_ONLINE=0
+    for (( I = 0; I < ${#DIST_SITE_URL_LIST[@]}; ++I ))
+    do
+        echo "$ECHO_PREFIX Try to access to ${DIST_SITE_URL_LIST[${I}]}"
+        STATUS_CODE=`curl -k --insecure -IL ${DIST_SITE_URL_LIST[${I}]} -s -w '%{http_code}\n' -o /dev/null` || true
+        if [ "${STATUS_CODE}" = 200 ]; then
+            IS_NETWORK_ONLINE=1
+            break
+        else
+            echo "$ECHO_PREFIX Unable to access ${DIST_SITE_URL_LIST[${I}]}"
+            echo "$ECHO_PREFIX     Status code : ${STATUS_CODE}"
+        fi
+    done
+    if [ ${IS_NETWORK_ONLINE} != 1 ]; then
         echo "$ECHO_PREFIX Install error, please retry after re-connecting to network"
         exit 1
     fi
 
-    curl --insecure -L "https://drive.google.com/uc?export=download&id=0B4y35FiV1wh7MWVlSDBCSXZMTXM" -o "${ORG_DIC_NAME}.tar.gz"
-    if [ $? != 0 ]; then
-        echo ""
-        echo "$ECHO_PREFIX Failed to download $ORG_DIC_NAME"
-        echo "$ECHO_PREFIX Please check your network to download 'https://mecab.googlecode.com/files/${ORG_DIC_NAME}.tar.gz'"
-        exit 1;
-    fi
+    ORG_DIC_URL_LIST=()
+    # download from ja.osdn.net
+    ORG_DIC_URL_LIST[0]="https://ja.osdn.net/frs/g_redir.php?m=kent&f=mecab%2Fmecab-ipadic%2F2.7.0-20070801%2F${ORG_DIC_NAME}.tar.gz"
+    # download from google drive
+    ORG_DIC_URL_LIST[1]="https://drive.google.com/uc?export=download&id=0B4y35FiV1wh7MWVlSDBCSXZMTXM"
+    # download from sourceforge
+    ORG_DIC_URL_LIST[2]="https://sourceforge.net/projects/mecab/files/mecab-ipadic/2.7.0-20070801/mecab-ipadic-2.7.0-20070801.tar.gz/download?use_mirror=autoselect#"
+    for (( I = 0; I < ${#ORG_DIC_URL_LIST[@]}; ++I ))
+    do
+        echo "$ECHO_PREFIX Try to download from ${ORG_DIC_URL_LIST[${I}]}"
+        curl --insecure -L "${ORG_DIC_URL_LIST[${I}]}" -o "${ORG_DIC_NAME}.tar.gz"  || true
+        if [ $? != 0 ]; then
+            echo ""
+            echo "$ECHO_PREFIX Failed to download $ORG_DIC_NAME"
+            echo "$ECHO_PREFIX Please check your network to download '${ORG_DIC_URL_LIST[${I}]}'"
+            continue 1
+	fi
+	TMP_IPADIC_HASH_VAL=`openssl sha1 ${BASEDIR}/../build/${ORG_DIC_NAME}.tar.gz | cut -d $' ' -f 2,2`
+        if [ "${TMP_IPADIC_HASH_VAL}" != "0d9d021853ba4bb4adfa782ea450e55bfe1a229b" ]; then
+            echo ""
+            echo "Hash value of ${BASEDIR}/../build/${ORG_DIC_NAME}.tar.gz don't match"
+        else
+            echo "Hash value of ${BASEDIR}/../build/${ORG_DIC_NAME}.tar.gz matched"
+            break 1;
+        fi
+    done
 else
     echo "$ECHO_PREFIX Original mecab-ipadic file is already there."
 fi
 
-if [ `openssl sha1 ${BASEDIR}/../build/mecab-ipadic-2.7.0-20070801.tar.gz | cut -d $' ' -f 2,2` != "0d9d021853ba4bb4adfa782ea450e55bfe1a229b" ]; then
+IPADIC_HASH_VAL=`openssl sha1 ${BASEDIR}/../build/${ORG_DIC_NAME}.tar.gz | cut -d $' ' -f 2,2`
+if [ "${IPADIC_HASH_VAL}" != "0d9d021853ba4bb4adfa782ea450e55bfe1a229b" ]; then
     echo "$ECHO_PREFIX Fail to download ${BASEDIR}/../build/${ORG_DIC_NAME}.tar.gz"
     echo "$ECHO_PREFIX You should remove ${BASEDIR}/../build/${ORG_DIC_NAME}.tar.gz before retrying to install mecab-ipadic-NEologd"
     echo "$ECHO_PREFIX        rm -rf ${BASEDIR}/../build/${ORG_DIC_NAME}"
@@ -343,7 +376,7 @@ else
     echo "${ECHO_PREFIX} We can't intall ${BASEDIR}/../seed/${ADJECTIVE_VERB_SEED_FILE_NAME}"
 fi
 
-INFREQ_DATETIME_SEED_FILE_NAME=neologd-date-time-infreq-dict-seed.20170224.csv
+INFREQ_DATETIME_SEED_FILE_NAME=neologd-date-time-infreq-dict-seed.20190415.csv
 if [ -f ${BASEDIR}/../seed/${INFREQ_DATETIME_SEED_FILE_NAME}.xz ]; then
     if [ ${WANNA_INSRALL_ALL_SEED_FILES} -gt 0 ]; then
         WANNA_INSTALL_INFREQ_DATETIME=1
@@ -364,7 +397,7 @@ else
     echo "${ECHO_PREFIX} We can't intall ${BASEDIR}/../seed/${INFREQ_DATETIME_SEED_FILE_NAME}"
 fi
 
-INFREQ_QUANTITY_SEED_FILE_NAME=neologd-quantity-infreq-dict-seed.20170224.csv
+INFREQ_QUANTITY_SEED_FILE_NAME=neologd-quantity-infreq-dict-seed.20190415.csv
 if [ -f ${BASEDIR}/../seed/${INFREQ_QUANTITY_SEED_FILE_NAME}.xz ]; then
     if [ ${WANNA_INSRALL_ALL_SEED_FILES} -gt 0 ]; then
         WANNA_INSTALL_INFREQ_QUANTITY=1
